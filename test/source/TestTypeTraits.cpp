@@ -228,10 +228,12 @@ struct NoThrowDestructible
 };
 
 #if !defined(EA_COMPILER_NO_EXCEPTIONS)
+EA_DISABLE_VC_WARNING(4290) // C++ exception specification ignored except to indicate a function is not __declspec(nothrow)
 	struct ThrowDestructible
 	{
 		~ThrowDestructible() throw(int) { throw(int()); }
 	};
+EA_RESTORE_VC_WARNING()
 
 	struct ThrowDestructibleNoexceptFalse
 	{

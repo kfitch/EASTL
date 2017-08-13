@@ -15,6 +15,8 @@ EA_DISABLE_ALL_VC_WARNINGS()
 #endif
 EA_RESTORE_ALL_VC_WARNINGS()
 
+#include <EASTL/fixed_allocator.h>
+
 using namespace eastl;
 
 
@@ -149,6 +151,34 @@ int TestMap()
 			EATEST_VERIFY_NOTHROW(map3.at(0));
 		#endif
 		EATEST_VERIFY(map3.at(0) == 1);
+	}
+
+	{
+		struct SKey
+		{
+			int i0, i1, i2;
+			SKey() : i0(0), i1(0), i2(0) {}
+			inline bool operator<(const SKey& rhs) const
+			{
+				if (i0 != rhs.i0) return i0 < rhs.i0;
+				if (i1 != rhs.i1) return i1 < rhs.i1;
+				if (i2 != rhs.i2) return i2 < rhs.i2;
+				return false;
+			}
+		};
+
+		typedef eastl::map<SKey, void*, eastl::less<SKey>, eastl::fixed_allocator_with_overflow> MapCache;
+		typedef MapCache::node_type MapCacheNode;
+
+		const size_t nCacheSize = 1024;
+		size_t nBufferSize = nCacheSize * sizeof(MapCacheNode);
+		unsigned char* pBuffer = new unsigned char[nBufferSize];
+
+		MapCache m_mapCache;
+		m_mapCache.get_allocator().init(pBuffer, nBufferSize, sizeof(MapCacheNode), EA_ALIGN_OF(MapCacheNode));
+
+		SKey oKey;
+		m_mapCache[oKey] = 0;
 	}
 
 //    todo:  create a test case for this.
