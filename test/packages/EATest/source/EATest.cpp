@@ -130,7 +130,8 @@ namespace UnitTest
                     EATEST_VERIFY_IMP(bExpression, nErrorCount, pFile, nLine, buffer);
                 else
                 {
-                    char* pBuffer = new char[nReturnValue + 1];
+                    const int nExpectedLen = EA::StdC::Vsnprintf(buffer, 0, pFormat, arguments); // calculate string length for allocation 
+                    char* pBuffer = new char[nExpectedLen + 1];
 
                     if(pBuffer)
                     {
@@ -138,7 +139,7 @@ namespace UnitTest
                             va_end(arguments);
                             va_copy(arguments, argumentsSaved);
                         #endif
-                        EA::StdC::Vsnprintf(pBuffer, nReturnValue + 1, pFormat, arguments);
+                        EA::StdC::Vsnprintf(pBuffer, nExpectedLen + 1, pFormat, arguments);
                         EATEST_VERIFY_IMP(bExpression, nErrorCount, pFile, nLine, pBuffer);
                         delete[] pBuffer;
                     }
@@ -185,7 +186,8 @@ namespace UnitTest
                     EATEST_VERIFY_IMP(bExpression, nErrorCount, __FILE__, __LINE__, buffer);
                 else
                 {
-                    char* pBuffer = new char[nReturnValue + 1];
+                    const int nExpectedLen = EA::StdC::Vsnprintf(buffer, 0, pFormat, arguments); // calculate string length for allocation 
+                    char* pBuffer = new char[nExpectedLen + 1];
 
                     if(pBuffer)
                     {
@@ -193,7 +195,7 @@ namespace UnitTest
                             va_end(arguments);
                             va_copy(arguments, argumentsSaved);
                         #endif
-                        EA::StdC::Vsnprintf(pBuffer, nReturnValue + 1, pFormat, arguments);
+                        EA::StdC::Vsnprintf(pBuffer, nExpectedLen + 1, pFormat, arguments);
                         EATEST_VERIFY_IMP(bExpression, nErrorCount, __FILE__, __LINE__, pBuffer);
                         delete[] pBuffer;
                     }
@@ -705,6 +707,8 @@ EATEST_API uint64_t GetSystemMemoryMB()
 
         return (uint64_t)(pageCount * pageSize) / (1024 * 1024);
 
+    #elif defined(EA_PLATFORM_XBOXONE)  // Less than 8 GiB is available to the application at runtime.
+        return 8192;
     #elif defined(EA_PLATFORM_PS4)      // As of SDK 1.6 (May 2014), the normal max direct memory available to applications is 4.5 GiB. On dev kits the max direct memory available is 5.25 GiB when enabled in debug settings.
         return 4096;
     #elif defined(EA_PLATFORM_DESKTOP)  // Generic desktop catchall, which includes Unix and OSX.
@@ -861,7 +865,7 @@ void Test::WriteReport()
     {
         char buffer[384];
         EA::EAMain::ReportFunction pReportFunction = GetReportFunction();
-        EA::StdC::Sprintf(buffer, "%-24s - %s\n", msTestName.c_str(), mnErrorCount ? "FAILED" : "PASSED");
+        EA::StdC::Sprintf(buffer, "%-24s - %s \t%2.4f secs\n", msTestName.c_str(), mnErrorCount ? "FAILED" : "PASSED", mnElapsedTestTimeInMicroseconds / 1000000.f);
         pReportFunction(buffer);
     }
 }
@@ -884,6 +888,8 @@ int TestFunction::Run()
 
     if(mpFunction)
     {
+		uint64_t startTimeInMicroseconds = GetSystemTimeMicroseconds();
+
         #ifdef _MSC_VER
             __try {
                 nTestResult = (*mpFunction)();
@@ -900,6 +906,8 @@ int TestFunction::Run()
             mnErrorCount++;
         else
             mnSuccessCount++;
+
+		mnElapsedTestTimeInMicroseconds = (GetSystemTimeMicroseconds() - startTimeInMicroseconds);
     }
 
     WriteReport();

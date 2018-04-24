@@ -144,6 +144,17 @@ public:
 	testmovable& operator=(testmovable&&) EA_NOEXCEPT { return *this; }
 };
 
+#if EASTL_MOVE_SEMANTICS_ENABLED
+	struct TestMoveAssignToSelf
+	{
+		TestMoveAssignToSelf() : mMovedToSelf(false) {}
+		TestMoveAssignToSelf(const TestMoveAssignToSelf& other)       { mMovedToSelf = other.mMovedToSelf; }
+		TestMoveAssignToSelf& operator=(TestMoveAssignToSelf&& other) { mMovedToSelf = true; return *this; }
+		TestMoveAssignToSelf& operator=(const TestMoveAssignToSelf&) = delete;
+
+		bool mMovedToSelf;
+	};
+#endif
 
 #if EASTL_VARIABLE_TEMPLATES_ENABLED
 	/// custom type-trait which checks if a type is comparable via the <operator.
@@ -307,8 +318,9 @@ int TestVector()
 
 		// Should be able to emplace_back an item with const members (non-copyable)
 		eastl::vector<ItemWithConst> myVec2;
-		myVec2.emplace_back(42);
+		ItemWithConst& ref = myVec2.emplace_back(42);
 		EATEST_VERIFY(myVec2.back().i == 42);
+		EATEST_VERIFY(ref.i == 42);
 #endif
 	}
 
@@ -538,9 +550,10 @@ int TestVector()
 
 		vector<TestObject> toVectorA;
 
-		toVectorA.emplace_back(2, 3, 4);
+		TestObject& ref = toVectorA.emplace_back(2, 3, 4);
 		EATEST_VERIFY((toVectorA.size() == 1) && (toVectorA.back().mX == (2 + 3 + 4)) &&
 					  (TestObject::sTOCtorCount == 1));
+		EATEST_VERIFY(ref.mX == (2 + 3 + 4));
 
 		toVectorA.emplace(toVectorA.begin(), 3, 4, 5);
 		EATEST_VERIFY((toVectorA.size() == 2) && (toVectorA.front().mX == (3 + 4 + 5)) &&
@@ -554,9 +567,10 @@ int TestVector()
 		// It is allowed to use standard copy construction if it wants. We could force it with eastl::move() usage.
 		vector<TestObject> toVectorA;
 
-		toVectorA.emplace_back(TestObject(2, 3, 4));
+		TestObject& ref = toVectorA.emplace_back(TestObject(2, 3, 4));
 		EATEST_VERIFY((toVectorA.size() == 1) && (toVectorA.back().mX == (2 + 3 + 4)) &&
 					  (TestObject::sTOMoveCtorCount == 1));
+		EATEST_VERIFY(ref.mX == (2 + 3 + 4));
 
 		toVectorA.emplace(toVectorA.begin(), TestObject(3, 4, 5));
 		EATEST_VERIFY((toVectorA.size() == 2) && (toVectorA.front().mX == (3 + 4 + 5)) &&
@@ -826,8 +840,8 @@ int TestVector()
 		using namespace eastl;
 
 		// iterator insert(iterator position, const value_type& value);
-		// void     insert(iterator position, size_type n, const value_type& value);
-		// void     insert(iterator position, InputIterator first, InputIterator last);
+		// iterator insert(iterator position, size_type n, const value_type& value);
+		// iterator insert(iterator position, InputIterator first, InputIterator last);
 		// iterator insert(const_iterator position, std::initializer_list<T> ilist);
 
 		vector<int> v(7, 13);
@@ -853,18 +867,34 @@ int TestVector()
 			VerifySequence(v.begin(), v.end(), int(), "vector.insert", 13, 13, 13, 13, 13, 13, 13, 49, 99, 999, -1));
 
 		// Insert multiple copies
-		v.insert(v.begin() + 5, 3, 42);
+		it = v.insert(v.begin() + 5, 3, 42);
+        EATEST_VERIFY(it == v.begin() + 5);
 		EATEST_VERIFY(VerifySequence(v.begin(), v.end(), int(), "vector.insert", 13, 13, 13, 13, 13, 42, 42, 42, 13, 13,
 									 49, 99, 999, -1));
 
+        // Insert multiple copies with count == 0
+        vector<int>::iterator at = v.end();
+        it = v.insert(at, 0, 666);
+        EATEST_VERIFY(it == at);
+        EATEST_VERIFY(VerifySequence(v.begin(), v.end(), int(), "vector.insert", 13, 13, 13, 13, 13, 42, 42, 42, 13, 13,
+                                     49, 99, 999, -1));
 		// Insert iterator range
 		const int data[] = {2, 3, 4, 5};
-		v.insert(v.begin() + 1, data, data + 4);
+		it = v.insert(v.begin() + 1, data, data + 4);
+        EATEST_VERIFY(it == v.begin() + 1);
+		EATEST_VERIFY(VerifySequence(v.begin(), v.end(), int(), "vector.insert", 13, 2, 3, 4, 5, 13, 13, 13, 13, 42, 42,
+									 42, 13, 13, 49, 99, 999, -1));
+
+        // Insert empty iterator range
+        at = v.begin() + 1;
+		it = v.insert(at, data + 4, data + 4);
+        EATEST_VERIFY(it == at);
 		EATEST_VERIFY(VerifySequence(v.begin(), v.end(), int(), "vector.insert", 13, 2, 3, 4, 5, 13, 13, 13, 13, 42, 42,
 									 42, 13, 13, 49, 99, 999, -1));
 
 		// Insert with reallocation
-		v.insert(v.end() - 3, 6, 17);
+		it = v.insert(v.end() - 3, 6, 17);
+        EATEST_VERIFY(it == v.end() - (3 + 6));
 		EATEST_VERIFY(VerifySequence(v.begin(), v.end(), int(), "vector.insert", 13, 2, 3, 4, 5, 13, 13, 13, 13, 42, 42,
 									 42, 13, 13, 17, 17, 17, 17, 17, 17, 49, 99, 999, -1));
 
@@ -938,7 +968,9 @@ int TestVector()
 
 		// Insert more objects than the existing number using insert with iterator
 		TestObject::Reset();
-		toVector1.insert(toVector1.begin(), toVector2.begin(), toVector2.end());
+        eastl::vector<TestObject>::iterator it;
+		it = toVector1.insert(toVector1.begin(), toVector2.begin(), toVector2.end());
+        EATEST_VERIFY(it == toVector1.begin());
 		EATEST_VERIFY(VerifySequence(toVector1.begin(), toVector1.end(), int(), "vector.insert", 10, 11, 12, 0, 1, -1));
 		EATEST_VERIFY(TestObject::sTOMoveCtorCount + TestObject::sTOMoveAssignCount == 2 &&
 					  TestObject::sTOCopyCtorCount + TestObject::sTOCopyAssignCount == 3); // Move 2 existing elements and copy the 3 inserted
@@ -948,14 +980,16 @@ int TestVector()
 
 		// Insert less objects than the existing number using insert with iterator
 		TestObject::Reset();
-		toVector1.insert(toVector1.begin(), toVector3.begin(), toVector3.end());
+		it = toVector1.insert(toVector1.begin(), toVector3.begin(), toVector3.end());
 		EATEST_VERIFY(VerifySequence(toVector1.begin(), toVector1.end(), int(), "vector.insert", 20, 10, 11, 12, 0, 1, -1));
+        EATEST_VERIFY(it == toVector1.begin());
 		EATEST_VERIFY(TestObject::sTOMoveCtorCount + TestObject::sTOMoveAssignCount == 5 &&
 					  TestObject::sTOCopyCtorCount + TestObject::sTOCopyAssignCount == 1); // Move 5 existing elements and copy the 1 inserted
 
 		// Insert more objects than the existing number using insert without iterator
 		TestObject::Reset();
-		toVector1.insert(toVector1.begin(), 1, TestObject(17));
+		it = toVector1.insert(toVector1.begin(), 1, TestObject(17));
+        EATEST_VERIFY(it == toVector1.begin());
 		EATEST_VERIFY(VerifySequence(toVector1.begin(), toVector1.end(), int(), "vector.insert", 17, 20, 10, 11, 12, 0, 1, -1));
 		EATEST_VERIFY(TestObject::sTOMoveCtorCount + TestObject::sTOMoveAssignCount == 6 &&
 					  TestObject::sTOCopyCtorCount + TestObject::sTOCopyAssignCount == 2); // Move 6 existing element and copy the 1 inserted +
@@ -963,7 +997,8 @@ int TestVector()
 
 		// Insert less objects than the existing number using insert without iterator
 		TestObject::Reset();
-		toVector1.insert(toVector1.begin(), 10, TestObject(18));
+		it = toVector1.insert(toVector1.begin(), 10, TestObject(18));
+        EATEST_VERIFY(it == toVector1.begin());
 		EATEST_VERIFY(VerifySequence(toVector1.begin(), toVector1.end(), int(), "vector.insert", 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 17, 20, 10, 11, 12, 0, 1, -1));
 		EATEST_VERIFY(TestObject::sTOMoveCtorCount + TestObject::sTOMoveAssignCount == 7 &&
 					  TestObject::sTOCopyCtorCount + TestObject::sTOCopyAssignCount == 11); // Move 7 existing element and copy the 10 inserted +
@@ -1427,6 +1462,15 @@ int TestVector()
 		eastl::vector<testmovable> moveablevec;
 		testmovable moveable;
 		moveablevec.insert(moveablevec.end(), eastl::move(moveable));
+	}
+
+	{
+		// Calling erase of empty range should not call a move assignment to self
+		eastl::vector<TestMoveAssignToSelf> v1;
+		v1.push_back(TestMoveAssignToSelf());
+		EATEST_VERIFY(!v1[0].mMovedToSelf);
+		v1.erase(v1.begin(), v1.begin());
+		EATEST_VERIFY(!v1[0].mMovedToSelf);
 	}
 #endif
 
